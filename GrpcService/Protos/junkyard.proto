@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+option csharp_namespace = "GrpcService";
+
+package junk;
+
+service Service {
+  rpc Login (User) returns (SessionId);
+  rpc Logout(SessionId) returns (Resoult);
+
+  rpc Create(Yard) returns (Resoult);
+  rpc Read(Empty) returns (YardList);
+  rpc Update(Yard) returns (Resoult);
+  rpc Delete(Yard) returns (Resoult);
+
+  /*
+  rpc Custom1(onId) returns (Resoult);
+  rpc Custon2(Id) returns (Resoult);
+  rpc Custom3(Id) returns (Resoult);
+  */
+}
+
+message Empty{}
+
+message User{
+	string name = 1;
+	string password = 2;
+}
+
+message SessionId{
+	string id = 1;
+}
+
+message Resoult{
+	string success = 1;
+}
+
+message Yard{
+	string sessionid = 1;
+	int32 id = 2;
+	string district  = 3;
+	string address = 4;
+}
+
+message NewYard{
+	int32 id = 1;
+	string district  = 2;
+	string address = 3;
+}
+
+message YardList { 
+  repeated NewYard yards = 1; 
+}
+
+
