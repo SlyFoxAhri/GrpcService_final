@@ -59,21 +59,6 @@ namespace GrpcService.Services
                     return Task.FromResult(new Resoult { Success = "Already logged out" });
             }
         }
-        /*
-        private async bool IdExists(int id)
-        {
-            await using var connection = await _db.OpenConnectionAsync();
-            string sql = "SELECT id FROM yards WHERE id = '@id'";
-            await using var command = new MySqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@id", id);
-            await using var reader = await command.ExecuteReaderAsync();
-            int rows = await reader.ReadAsync();
-            
-
-            if()
-            return result;
-        }
-        */
 
         //CREATE
         public async override Task<Resoult> Create(Yard req, ServerCallContext context)
@@ -139,7 +124,7 @@ namespace GrpcService.Services
             await using var connection = await _db.OpenConnectionAsync();
 
             string sql1 = "UPDATE yards SET district = @district, address = @address WHERE id = @id;";
-            string sql2 = "UPDATE collects SET yardid = @id, typeid =(SELECT FROM collects where wname = '@wname');";
+            string sql2 = "UPDATE collects SET yardid = @id, typeid =(SELECT FROM collects where wname = @wname);";
 
             await using var command1 = new MySqlCommand(sql1, connection);
             await using var command2 = new MySqlCommand(sql2, connection);
@@ -257,7 +242,5 @@ namespace GrpcService.Services
             }
             return resoult;
         }
-
-
     }
 }
