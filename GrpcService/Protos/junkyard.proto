@@ -13,11 +13,10 @@ service Service {
   rpc Update(Yard) returns (Resoult);
   rpc Delete(Yard) returns (Resoult);
 
-  /*
-  rpc Custom1(onId) returns (Resoult);
-  rpc Custon2(Id) returns (Resoult);
-  rpc Custom3(Id) returns (Resoult);
-  */
+  rpc BudaPestCount(Empty) returns (BPCount);
+  rpc SeveralYards(Empty) returns (YardList);
+  rpc WasteType(Count) returns (YardList);
+
 }
 
 message Empty{}
@@ -49,7 +48,10 @@ message NewYard{
 }
 
 message YardList { 
-  repeated NewYard yards = 1; 
+	repeated NewYard yards = 1; 
 }
 
-
+message BPCount{
+	int32 buda_count = 1;
+	int32 pest_count = 2;
+}
