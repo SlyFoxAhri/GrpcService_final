@@ -13,7 +13,7 @@ namespace GrpcService.Services
 {
     public class JunkyardService : Service.ServiceBase
     {
-        static Dictionary<string, string> users = new() { { "user", "password" } };
+        static Dictionary<string, string> users = new() { { "username", "password" } };
         static List<string> sessions = new();
         static List<int> id = new();
         private readonly MySqlDataSource _db;
@@ -59,6 +59,21 @@ namespace GrpcService.Services
                     return Task.FromResult(new Resoult { Success = "Already logged out" });
             }
         }
+        /*
+        private async bool IdExists(int id)
+        {
+            await using var connection = await _db.OpenConnectionAsync();
+            string sql = "SELECT id FROM yards WHERE id = '@id'";
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@id", id);
+            await using var reader = await command.ExecuteReaderAsync();
+            int rows = await reader.ReadAsync();
+            
+
+            if()
+            return result;
+        }
+        */
 
         //CREATE
         public async override Task<Resoult> Create(Yard req, ServerCallContext context)
@@ -66,23 +81,28 @@ namespace GrpcService.Services
             if (!IsLoggedIn(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
             if (id.Contains(req.Id)) { return new Resoult { Success = "Id already exist" }; }
 
-            id.Add(req.Id);
             await using var connection = await _db.OpenConnectionAsync();
 
             string sql1 = "INSERT INTO yards(id, district, address) VALUES(@id, @district, @address);";
-            //string sql2 = "INSERT INTO waste(wname) VALUES(@wname);";  
+            string sql2 = "INSERT INTO collects(yardid) VALUES(@id);";
+            string sql3 = "UPDATE collects SET typeid=(select id from types where wname = @wname) WHERE yardid = @id;" ;
 
             await using var command1 = new MySqlCommand(sql1, connection);
-            //await using var command2 = new MySqlCommand(sql2, connection);
+            await using var command2 = new MySqlCommand(sql2, connection);
+            await using var command3 = new MySqlCommand(sql3, connection);
 
             command1.Parameters.AddWithValue("@id", req.Id);
             command1.Parameters.AddWithValue("@district", req.District);
             command1.Parameters.AddWithValue("@address", req.Address);
-            //command2.Parameters.AddWithValue("@waste", req.Address);
+            command2.Parameters.AddWithValue("@id", req.Id);
+            command3.Parameters.AddWithValue("@id", req.Id);
+            command3.Parameters.AddWithValue("@wname", req.Waste);
 
             await command1.ExecuteNonQueryAsync();
-            //await command2.ExecuteNonQueryAsync(); 
+            await command2.ExecuteNonQueryAsync();
+            await command3.ExecuteNonQueryAsync();
 
+            id.Add(req.Id);
             return new Resoult { Success = "Success :3" };
         }
 
@@ -103,7 +123,6 @@ namespace GrpcService.Services
                     Id = reader.GetInt32("id"),
                     District = reader.GetString("district"),
                     Address = reader.GetString("address"),
-                    Waste = ""
                 };
 
                 result.Yards.Add(yard);
@@ -119,15 +138,21 @@ namespace GrpcService.Services
 
             await using var connection = await _db.OpenConnectionAsync();
 
-            string sql = "UPDATE yards SET district = @district, address = @address WHERE id = @id;";
+            string sql1 = "UPDATE yards SET district = @district, address = @address WHERE id = @id;";
+            string sql2 = "UPDATE collects SET yardid = @id, typeid =(SELECT FROM collects where wname = '@wname');";
 
-            await using var command = new MySqlCommand(sql, connection);
+            await using var command1 = new MySqlCommand(sql1, connection);
+            await using var command2 = new MySqlCommand(sql2, connection);
 
-            command.Parameters.AddWithValue("@district", req.District);
-            command.Parameters.AddWithValue("@address", req.Address);
-            command.Parameters.AddWithValue("@id", req.Id);
+            command1.Parameters.AddWithValue("@district", req.District);
+            command1.Parameters.AddWithValue("@address", req.Address);
+            command1.Parameters.AddWithValue("@id", req.Id);
+            command2.Parameters.AddWithValue("@id", req.Id);
+            command2.Parameters.AddWithValue("@wname", req.Waste);
+            
 
-            int rows = await command.ExecuteNonQueryAsync();
+            int rows = await command1.ExecuteNonQueryAsync();
+            await command2.ExecuteNonQueryAsync();
             if (rows > 0) { return new Resoult { Success = "Success :3" }; }
 
             return new Resoult { Success = "Something went wrong :/ " };
@@ -139,22 +164,28 @@ namespace GrpcService.Services
             if (!IsLoggedIn(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
             if (!id.Contains(req.Id)) { return new Resoult { Success = "Id doesn't exist" }; }
 
-            id.Remove(req.Id);
+            
             await using var connection = await _db.OpenConnectionAsync();
 
-            string sql = "DELETE FROM yards WHERE id = @id;";
+            string sql1 = "DELETE FROM yards WHERE id = @id;";
+            string sql2 = "DELETE FROM collects WHERE yardid = @id;";
 
-            await using var command = new MySqlCommand(sql, connection);
+            await using var command1 = new MySqlCommand(sql1, connection);
+            await using var command2 = new MySqlCommand(sql2, connection);
 
-            command.Parameters.AddWithValue("@district", req.District);
-            command.Parameters.AddWithValue("@address", req.Address);
+            command1.Parameters.AddWithValue("@id", req.Id);
+            command2.Parameters.AddWithValue("@id", req.Id);
 
-            int rows = await command.ExecuteNonQueryAsync();
+
+            int rows = await command1.ExecuteNonQueryAsync();
+            await command2.ExecuteNonQueryAsync();
+            id.Remove(req.Id);
             if (rows > 0) { return new Resoult { Success = "Success :3" }; }
 
             return new Resoult { Success = "Something went wrong :/ " };
         }
 
+        //QUERY 1
         public async override Task<BPCount> BudaPestCount(Empty req, ServerCallContext context)
         {
             int buda = 0;
@@ -183,6 +214,7 @@ namespace GrpcService.Services
             };
         }
 
+        //QUERY 2
         public async override Task<YardList> SeveralYards(Empty req, ServerCallContext context)
         {
             var resoult = new YardList();
@@ -196,17 +228,15 @@ namespace GrpcService.Services
             while(await reader.ReadAsync())
             {
                 var yard = new NewYard
-                {
-                    Id = 0,
+                {                    
                     District = reader.GetString("district"),
-                    Address = "",
-                    Waste = ""
                 };
                 resoult.Yards.Add(yard);
             }
             return resoult;
         }
 
+        //QUERY 3
         public async override Task<YardList> WasteType(Count req, ServerCallContext context)
         {
             var resoult = new YardList();
@@ -221,14 +251,13 @@ namespace GrpcService.Services
             {
                 var yard = new NewYard
                 {
-                    Id = 0,
-                    District = "",
-                    Address = "",
                     Waste = reader.GetString("wname")
                 };
                 resoult.Yards.Add(yard);
             }
             return resoult;
         }
+
+
     }
 }
