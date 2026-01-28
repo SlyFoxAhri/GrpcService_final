@@ -45,6 +45,7 @@ message NewYard{
 	int32 id = 1;
 	string district  = 2;
 	string address = 3;
+	string waste = 4;
 }
 
 message YardList { 
@@ -54,4 +55,8 @@ message YardList {
 message BPCount{
 	int32 buda_count = 1;
 	int32 pest_count = 2;
+}
+
+message Count{
+	int32 count = 1;
 }

@@ -50,7 +50,7 @@ namespace GrpcService.Services
         {
             lock (sessions)
             {
-                if (!sessions.Contains(req.Id))
+                if (sessions.Contains(req.Id))
                 {
                     sessions.Remove(req.Id);
                     return Task.FromResult(new Resoult { Success = "Logged out :3" });
@@ -102,7 +102,8 @@ namespace GrpcService.Services
                 {
                     Id = reader.GetInt32("id"),
                     District = reader.GetString("district"),
-                    Address = reader.GetString("address")
+                    Address = reader.GetString("address"),
+                    Waste = ""
                 };
 
                 result.Yards.Add(yard);
@@ -198,7 +199,32 @@ namespace GrpcService.Services
                 {
                     Id = 0,
                     District = reader.GetString("district"),
-                    Address = ""
+                    Address = "",
+                    Waste = ""
+                };
+                resoult.Yards.Add(yard);
+            }
+            return resoult;
+        }
+
+        public async override Task<YardList> WasteType(Count req, ServerCallContext context)
+        {
+            var resoult = new YardList();
+            await using var connection = await _db.OpenConnectionAsync();
+
+            string sql = "SELECT t.wname FROM types t JOIN collects c ON t.id = c.typeId GROUP BY t.id, t.wname HAVING COUNT(DISTINCT c.yardId) < @max;";
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@max", req.Count_);
+            await using var reader = await command.ExecuteReaderAsync();
+
+            while(await reader.ReadAsync())
+            {
+                var yard = new NewYard
+                {
+                    Id = 0,
+                    District = "",
+                    Address = "",
+                    Waste = reader.GetString("wname")
                 };
                 resoult.Yards.Add(yard);
             }
