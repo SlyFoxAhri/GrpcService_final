@@ -12,7 +12,7 @@ This project demonstrates how to implement general best practices in gRPC securi
 
 
 
-##### Overview:
+### Overview:
 
 
 
@@ -20,7 +20,7 @@ The server connects to an example database called "junkyard" that displays infor
 
 
 
-##### Tech stack:
+### Tech stack:
 
 
 
@@ -38,11 +38,11 @@ TLS/HTTPS (Kestrel)
 
 
 
-##### Security overview:
+### Security overview:
 
 
 
-###### Hash + salt
+#### Hash + salt
 
 
 
@@ -52,7 +52,7 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### Token based authentication
+#### Token based authentication
 
 
 
@@ -63,7 +63,7 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### TLS encryption (HTTPS)
+#### TLS encryption (HTTPS)
 
 
 
@@ -73,7 +73,7 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### Parameterised SQL
+#### Parameterised SQL
 
 
 
@@ -83,7 +83,7 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### Input validation
+#### Input validation
 
 
 
@@ -93,7 +93,7 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### Message size limiting
+#### Message size limiting
 
 
 
@@ -102,10 +102,11 @@ TLS/HTTPS (Kestrel)
 
 
 
-###### Configuration
+#### Configuration
 
 
 
 * Secrets and API keys are set as environment variables, never stored in appsettings.json
 * Standard practice, sensitive data is not exposed to the public
+
 
