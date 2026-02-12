@@ -44,7 +44,7 @@ TLS/HTTPS (Kestrel)
 
 ###### Hash + salt
 
-&nbsp;	
+
 
 * User credentials are always salted and hashed before they are stored in the database
 * Login compares the stored hash with the provided hash
@@ -108,3 +108,4 @@ TLS/HTTPS (Kestrel)
 
 * Secrets and API keys are set as environment variables, never stored in appsettings.json
 * Standard practice, sensitive data is not exposed to the public
+
