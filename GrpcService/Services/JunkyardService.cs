@@ -1,4 +1,6 @@
 using Grpc.Core;
+using Microsoft.AspNetCore.Authentication.OAuth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity.Data;
@@ -7,45 +9,123 @@ using System.Collections.Generic;
 using System.Net;
 using System.Reflection.PortableExecutable;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Xml.Serialization;
+
 
 namespace GrpcService.Services
 {
     public class JunkyardService : Service.ServiceBase
     {
-        static Dictionary<string, string> users = new() { { "username", "password" } };
-        static List<string> sessions = new();
-        static List<int> id = new();
+        static bool isLogin = false;
+        static bool isExist = false;
+        private readonly HttpClient _http;
         private readonly MySqlDataSource _db;
-        public JunkyardService(MySqlDataSource db)
+        public JunkyardService(MySqlDataSource db, HttpClient http)
         {
             _db = db;
+            _http = http;
         }
-        private bool IsLoggedIn(string sessionId)
+
+        public class Auth0TokenResponse { 
+            public string access_token { get; set; } 
+            public string token_type { get; set; } 
+            public int expires_in { get; set; } 
+        }
+
+        private async void Islogin(string sessionId)
         {
-            lock (sessions)
-                return sessions.Contains(sessionId);
+            string temp = "";
+            await using var connection = new MySqlConnection();
+            string sql = "FROM user SELECT id WHERE id = @id;";
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("id", sessionId);
+            
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                temp = reader.GetString("id");
+            }
+
+            if (temp != null)
+                isLogin = true;
+            else
+                isLogin = false;
+        }
+        private async void IsExists(int Id)
+        {
+            int temp = 0;
+            await using var connection = new MySqlConnection();
+            string sql = "FROM yards SELECT id WHERE id = @id;";
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("id", Id);
+
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                temp = reader.GetInt32("id");            }
+
+            if (temp != 0)
+                isExist = true; //does it alwas stays true????
+            else
+                isExist = false;
         }
 
 
         //LOGIN
-        public override Task<SessionId> Login(User req, ServerCallContext context)
+        public override async Task<SessionId> Login(User req, ServerCallContext context)
         {
             string id = "";
-            if (users.TryGetValue(req.Name, out var passwd))
+            string user = "";
+            string password = "";
+            using var connection = new MySqlConnection();
+            string sql = "FROM user SELECT name WHERE name = @name AND password = @password;";
+            using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("name", req.Name);
+            command.Parameters.AddWithValue("password", req.Password);
+
+            using var reader = command.ExecuteReader();
+            while ( reader.Read())
             {
-                if (req.Password == passwd)
-                {
-                    id = Guid.NewGuid().ToString();
-                    lock (sessions)
-                        sessions.Add(id);
-                    return Task.FromResult(new SessionId { Id = id });
-                }
+                user = reader.GetString("name");
+                password = reader.GetString("password");
             }
-            return Task.FromResult(new SessionId { Id = "" });
+
+            if (user == null) 
+                return new SessionId { Id = "", Jwtoken = "" };
+
+            var tokenResponse = await _http.PostAsJsonAsync("https://dev-72s6v7r8ianq3xyk.us.auth0.com/oauth/token", 
+                new 
+                { 
+                    grant_type = "password", 
+                    username = req.Name, 
+                    password = req.Password, 
+                    audience = "https://dev-72s6v7r8ianq3xyk.us.auth0.com/api/v2/", 
+                    client_id = "9frJSanQx0DQdUqrwxOdLrS1XvNkKdyy", 
+                    client_secret = "b7PKbiEvtkpWD5hWu54hyYOahFkeqOXvboKUxc06exnShNRWArPtJT8pfEhq9V6g"
+                });
+
+            if (!tokenResponse.IsSuccessStatusCode) 
+                return new SessionId { Id = "", Jwtoken = "" };
+
+            var json = await tokenResponse.Content.ReadFromJsonAsync<Auth0TokenResponse>(); 
+
+            return new SessionId { Id = Guid.NewGuid().ToString(), Jwtoken = json.access_token };
+
+            /*
+            if (!(user == req.Name || password == req.Password || tokenresponse.IsSuccessStatusCode))
+            {                
+                return new SessionId { Id = "", Jwtoken = "" };
+            }
+            var json = await tokenresponse.Content.ReadFromJsonAsync<Auth0TokenResponse>();
+            id = Guid.NewGuid().ToString();
+            return new SessionId { Id = id, Jwtoken = json.access_token };
+            */
+
         }
 
-        //LOGOUT
+        /*LOGOUT
+        [Authorize]
         public override Task<Resoult> Logout(SessionId req, ServerCallContext context)
         {
             lock (sessions)
@@ -59,12 +139,14 @@ namespace GrpcService.Services
                     return Task.FromResult(new Resoult { Success = "Already logged out" });
             }
         }
-
+        */
         //CREATE
+        [Authorize]
         public async override Task<Resoult> Create(Yard req, ServerCallContext context)
         {
-            if (!IsLoggedIn(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
-            if (id.Contains(req.Id)) { return new Resoult { Success = "Id already exist" }; }
+            Islogin(req.Sessionid); IsExists(req.Id);
+            if (isLogin == false) { return new Resoult { Success = "Log in!! >:c" }; }
+            if (isExist == true) { return new Resoult { Success = "Id already exist" }; }
 
             await using var connection = await _db.OpenConnectionAsync();
 
@@ -87,7 +169,7 @@ namespace GrpcService.Services
             await command2.ExecuteNonQueryAsync();
             await command3.ExecuteNonQueryAsync();
 
-            id.Add(req.Id);
+            //id.Add(req.Id);
             return new Resoult { Success = "Success :3" };
         }
 
@@ -116,10 +198,11 @@ namespace GrpcService.Services
         }
 
         //UPDATE
+        [Authorize]
         public async override Task<Resoult> Update(Yard req, ServerCallContext context)
         {
-            if (!IsLoggedIn(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
-            if (!id.Contains(req.Id)) { return new Resoult { Success = "Id doesn't exist" }; }
+            if (isLogin==false) { return new Resoult { Success = "Log in!! >:c" }; }
+            if (isExist==false) { return new Resoult { Success = "Id doesn't exist" }; }
 
             await using var connection = await _db.OpenConnectionAsync();
 
@@ -144,12 +227,13 @@ namespace GrpcService.Services
         }
 
         //DELETE
+        [Authorize]
         public async override Task<Resoult> Delete(Yard req, ServerCallContext context)
         {
-            if (!IsLoggedIn(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
-            if (!id.Contains(req.Id)) { return new Resoult { Success = "Id doesn't exist" }; }
+            if (isLogin == false) { return new Resoult { Success = "Log in!! >:c" }; }
+            if (isExist == false) { return new Resoult { Success = "Id doesn't exist" }; }
 
-            
+
             await using var connection = await _db.OpenConnectionAsync();
 
             string sql1 = "DELETE FROM yards WHERE id = @id;";
@@ -164,7 +248,7 @@ namespace GrpcService.Services
 
             int rows = await command1.ExecuteNonQueryAsync();
             await command2.ExecuteNonQueryAsync();
-            id.Remove(req.Id);
+            //id.Remove(req.Id);
             if (rows > 0) { return new Resoult { Success = "Success :3" }; }
 
             return new Resoult { Success = "Something went wrong :/ " };
