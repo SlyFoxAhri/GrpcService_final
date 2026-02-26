@@ -11,14 +11,23 @@ namespace GrpcService.Services
 {
     public class JunkyardService : Service.ServiceBase
     {
-        private readonly HttpClient _http;
         private readonly MySqlDataSource _db;
-        private readonly IConfiguration _config;
-        public JunkyardService(MySqlDataSource db, HttpClient http, IConfiguration config)
+        public JunkyardService(MySqlDataSource db)
         {
             _db = db;
-            _http = http;
-            _config = config;
+        }
+
+        //ADD USER INTO DATABASE - FOR TESTING
+        private async void AddUser(string password)
+        {
+            string hashedpassword = BCrypt.Net.BCrypt.HashPassword(password);
+            hashedpassword = hashedpassword;
+            await using var connection = await _db.OpenConnectionAsync();
+            string sql = "UPDATE user SET password = @password WHERE name = @name ";
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@name", "user321");
+            command.Parameters.AddWithValue("@password", hashedpassword);
+            command.ExecuteNonQueryAsync();
         }
 
         private async Task<bool> Islogin(string sessionId)
@@ -42,13 +51,24 @@ namespace GrpcService.Services
             return resoult != null;
         }
 
+        private bool Validate(Yard req)
+        {
+            if (req.Id <= 0) return false;
+            if (req.District == "0" || req.District.Length > 3) return false;
+            if (string.IsNullOrWhiteSpace(req.Address) || req.Address.Length > 40) return false;
+            return true;
+        }
+
         private string GenerateJwt(string username)
         {
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
+            var jwtKey = Environment.GetEnvironmentVariable("JWT_SECRET_KEY");
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
             var token = new JwtSecurityToken(
+                issuer: "JunkyardServer",
+                audience: "JunkyardClient",
                 claims: new[] { new Claim(ClaimTypes.Name, username) },
-                expires: DateTime.UtcNow.AddHours(8),
+                expires: DateTime.UtcNow.AddMinutes(60),
                 signingCredentials: creds
             );
             return new JwtSecurityTokenHandler().WriteToken(token);
@@ -57,14 +77,17 @@ namespace GrpcService.Services
         //LOGIN
         public override async Task<SessionId> Login(User req, ServerCallContext context)
         {
-            using var connection = await _db.OpenConnectionAsync();
-            string sql = "SELECT name FROM user WHERE name = @name AND password = @password;";
+            //AddUser("passwd");
+            if(string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 50 || string.IsNullOrWhiteSpace(req.Password) || req.Password.Length > 100)
+                return new SessionId { Id = "", Jwtoken = "" };
+             
+            await using var connection = await _db.OpenConnectionAsync();
+            string sql = "SELECT password FROM user WHERE name = @name;";
             using var command = new MySqlCommand(sql, connection);
             command.Parameters.AddWithValue("@name", req.Name);
-            command.Parameters.AddWithValue("@password", req.Password);
 
-            var result = await command.ExecuteScalarAsync();
-            if (result == null)
+            var result = await command.ExecuteScalarAsync() as string;
+            if (result == null || !BCrypt.Net.BCrypt.Verify(req.Password, result))
                 return new SessionId { Id = "", Jwtoken = "" };
 
             string temp = Guid.NewGuid().ToString();
@@ -86,6 +109,8 @@ namespace GrpcService.Services
         [Authorize]
         public async override Task<Resoult> Create(Yard req, ServerCallContext context)
         {
+            if (!Validate(req))
+                return new Resoult { Success = "Invalid input, try again :<" };
             if (!await Islogin(req.Sessionid)) { return new Resoult { Success = "Log in!! >:c" }; }
             if (await IsExists(req.Id)) { return new Resoult { Success = "Id already exist" }; }
 
@@ -140,7 +165,9 @@ namespace GrpcService.Services
         //UPDATE
         [Authorize]
         public async override Task<Resoult> Update(Yard req, ServerCallContext context)
-        { 
+        {
+            if (!Validate(req))
+                return new Resoult { Success = "Invalid input, try again :<" };
             if (!await IsExists(req.Id)) { return new Resoult { Success = "Id doesn't exist" }; }
 
             await using var connection = await _db.OpenConnectionAsync();
@@ -169,6 +196,8 @@ namespace GrpcService.Services
         [Authorize]
         public async override Task<Resoult> Delete(Yard req, ServerCallContext context)
         {
+            if (!Validate(req))
+                return new Resoult { Success = "Invalid input, try again :<" };
             if (!await IsExists(req.Id)) { return new Resoult { Success = "Id doesn't exist" }; }
 
 
