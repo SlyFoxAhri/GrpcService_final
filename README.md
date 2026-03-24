@@ -4,6 +4,10 @@
 
 
 
+Client: https://github.com/SlyFoxAhri/GrpcClientWpf
+
+
+
 Secure gRPC server built with .NET 10, MySQL and ASP.NET Core.
 
 
